@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en-GB"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e6e6e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Stockpile</title>
+<style>
+:root{--bg:#edf0f2;--card:#fff;--tx:#14202a;--mu:#5d6b76;--ac:#0e6e6e;--on:#fff;--bd:#d3dade;--warn:#b85200;--bad:#b3261e;--ok:#1a7f4b}
+@media (prefers-color-scheme:dark){:root{--bg:#10181d;--card:#18232a;--tx:#e6edf0;--mu:#93a4ae;--ac:#5fd0c8;--on:#07211f;--bd:#2b3a43;--warn:#f0a050;--bad:#f58b82;--ok:#6fd9a0}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 "Avenir Next",system-ui,sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(64px + env(safe-area-inset-bottom))}
+main{max-width:640px;margin:0 auto;padding:12px}
+h1{font-size:22px;margin:4px 0 12px}h2{font-size:17px;margin:18px 0 8px}
+section[hidden],dialog:not([open]){display:none}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:10px}
+.row{display:flex;gap:8px;align-items:center}.grow{flex:1;min-width:0}
+.mu{color:var(--mu);font-size:14px}.warn{color:var(--warn)}.bad{color:var(--bad)}.ok{color:var(--ok)}
+input,select,button,textarea{font:inherit;color:inherit}
+input,select{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);min-height:44px}
+label{display:block;font-size:14px;color:var(--mu);margin:8px 0 3px}
+button{min-height:44px;padding:0 14px;border:1px solid var(--bd);border-radius:8px;background:var(--card);cursor:pointer}
+button.pri{background:var(--ac);color:var(--on);border-color:var(--ac);font-weight:600}
+button.sq{width:40px;padding:0;font-size:20px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--ac);outline-offset:1px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;border-radius:0;background:none;min-height:56px;color:var(--mu)}
+nav button[aria-current=true]{color:var(--ac);font-weight:700;box-shadow:inset 0 3px 0 var(--ac)}
+dialog{width:min(560px,94vw);max-height:92vh;overflow:auto;border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--tx);padding:14px}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+video{width:100%;border-radius:10px;background:#000;max-height:50vh}
+.big{font-size:44px;font-weight:700;line-height:1;color:var(--ac)}
+.bar{height:10px;border-radius:5px;background:var(--bd);overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--ac)}
+.chk{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)}
+.chk input{width:24px;min-height:24px;height:24px}
+ol{padding-left:20px;margin:6px 0}
+.th{width:48px;height:48px;border-radius:8px;object-fit:cover;background:var(--bd);flex:none}
+.ph{display:flex;align-items:center;justify-content:center;color:var(--mu);font-size:10px;text-align:center}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px}.chips button{white-space:nowrap;min-height:36px;border-radius:18px}
+.chips button[aria-pressed=true]{background:var(--ac);color:var(--on);border-color:var(--ac)}
+#pv{width:100%;max-height:220px;object-fit:contain;border-radius:8px;background:var(--bg);margin-top:8px}
+.ngrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}.ngrid div{position:relative}
+.ngrid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block}
+.ngrid button{position:absolute;top:3px;right:3px;min-height:30px;width:30px;padding:0}
+textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg)}
+[hidden]{display:none!important}
+#addNote{white-space:nowrap}
+@media print{nav,button,.noprint{display:none!important}body{padding:0}section[hidden]{display:block!important}}
+</style></head><body>
+<main>
+<section id="t-stock">
+ <h1>Stock</h1>
+ <div class="row"><input id="q" type="search" placeholder="Search items" aria-label="Search items"><button class="pri" id="scanBtn">Scan</button></div>
+ <div id="scanbox" class="card" hidden style="margin-top:10px">
+  <video id="vid" playsinline muted></video>
+  <p class="mu" id="scanmsg">Point the camera at a barcode.</p>
+  <div class="row"><input id="manual" inputmode="numeric" placeholder="Or type barcode number"><button id="manualGo">Look up</button><button id="scanStop">Close</button></div>
+ </div>
+ <div class="row" style="margin:10px 0"><button id="addBtn" class="grow">Add item by hand</button></div>
+ <div id="chips" class="chips"></div>
+ <div id="list"></div>
+</section>
+
+<section id="t-plan" hidden>
+ <h1>Outage plan</h1>
+ <div class="card">
+  <div class="row">
+   <div class="grow"><label for="s-people">People</label><input id="s-people" type="number" min="1"></div>
+   <div class="grow"><label for="s-days">Days to cover</label><input id="s-days" type="number" min="1"></div>
+  </div>
+  <div class="row">
+   <div class="grow"><label for="s-kcal">kcal per person/day</label><input id="s-kcal" type="number" min="800"></div>
+   <div class="grow"><label for="s-water">Drinking water L per person/day</label><input id="s-water" type="number" min="1" step="0.5"></div>
+  </div>
+  <div class="row">
+   <div class="grow"><label for="s-grey">Grey water L per person/day (washing, flushing)</label><input id="s-grey" type="number" min="0" step="1"></div>
+  </div>
+ </div>
+ <div id="plan"></div>
+ <h2>Eat first</h2>
+ <div class="card" id="eat"></div>
+ <h2>Essentials</h2>
+ <div class="card" id="ess"></div>
+</section>
+
+<section id="t-notes" hidden>
+ <h1>Notes</h1>
+ <div class="row"><input id="nq" type="search" placeholder="Search notes" aria-label="Search notes"><button class="pri" id="addNote">Add note</button></div>
+ <div id="nchips" class="chips" style="margin-top:10px"></div>
+ <div id="nchips2" class="chips"></div>
+ <div id="nlist"></div>
+</section>
+
+<section id="t-data" hidden>
+ <h1>More</h1>
+ <div class="card"><h2 style="margin:0 0 4px">Places</h2><p class="mu" style="margin-top:0">Where things are kept. Rename or remove them here.</p><div id="places"></div><div class="row" style="margin-top:8px"><input id="np" placeholder="New place, e.g. Loft" aria-label="New place"><button id="npAdd">Add</button></div></div>
+ <div class="card"><h2 style="margin:0 0 4px">Units</h2><p class="mu" style="margin-top:0">Choices in the Unit dropdown. Tap one to remove it.</p><div id="units"></div><div class="row"><input id="nu" placeholder="New unit, e.g. crates" aria-label="New unit"><button id="nuAdd">Add</button></div></div>
+ <h2>Backup</h2>
+ <div class="card">
+  <p class="mu">Everything is stored only on this phone. Backups include photos and screenshots, so the file can be large. Save one now and then, and print the list in case your phone goes flat.</p>
+  <div class="row"><button class="grow pri" id="exp">Save backup</button><label class="grow" style="margin:0"><span class="mu">Restore</span><input id="imp" type="file" accept=".json"></label></div>
+  <div class="row" style="margin-top:10px"><button class="grow" id="prt">Print stock list</button></div>
+ </div>
+ <p class="mu" id="stat"></p>
+</section>
+</main>
+
+<dialog id="dlg"><form method="dialog" id="f">
+ <h2 id="dtitle" style="margin-top:0">Item</h2>
+ <p class="mu" id="dnote"></p>
+ <label for="f-name">Name</label><input id="f-name" required>
+ <div class="row">
+  <div class="grow"><label for="f-qty">Quantity</label><input id="f-qty" type="number" min="0" step="1" inputmode="numeric"></div>
+  <div class="grow"><label for="f-unit">Unit</label><select id="f-unit"></select></div>
+  </div><div class="row"><div class="grow"><label for="f-v" id="f-vl">kcal per unit</label><input id="f-v" type="number" min="0" step="any" inputmode="decimal"></div>
+ </div>
+ <label for="f-cat">Type</label><select id="f-cat"></select>
+ <div class="row">
+  <div class="grow"><label for="f-loc">Stored</label><select id="f-loc"></select></div>
+  <div class="grow"><label for="f-exp">Use by / best before</label><input id="f-exp" type="date"></div>
+ </div>
+ <label for="f-place">Where is it kept?</label><select id="f-place"></select>
+ <label for="f-ph">Photo</label>
+ <div class="row"><input id="f-ph" type="file" accept="image/*" class="grow"><button type="button" id="f-phx" hidden>Remove</button></div><img id="pv" alt="Photo of item" hidden>
+ <input id="f-code" type="hidden">
+ <div class="row" style="margin-top:14px"><button class="pri grow" id="f-save" value="save">Save item</button><button type="button" id="f-cancel">Cancel</button><button type="button" id="f-del" class="bad">Delete</button></div>
+</form></dialog>
+
+<dialog id="ndlg"><form method="dialog" id="nf">
+ <h2 id="ntitle" style="margin-top:0">Note</h2>
+ <label for="n-title">Title</label><input id="n-title" required>
+ <label for="n-kind">Type</label><select id="n-kind"></select>
+ <label for="n-ing" id="n-il">Ingredients (one per line)</label><textarea id="n-ing" rows="5"></textarea>
+ <div id="n-chk"></div>
+ <label for="n-text" id="n-tl">Details</label><textarea id="n-text" rows="8"></textarea>
+ <label for="n-img">Screenshots and photos</label><input id="n-img" type="file" accept="image/*" multiple>
+ <div id="n-imgs" class="ngrid"></div>
+ <div class="row" style="margin-top:14px"><button class="pri grow" id="n-save" value="save">Save note</button><button type="button" id="n-cancel">Cancel</button><button type="button" id="n-del" class="bad">Delete</button></div>
+</form></dialog>
+<dialog id="vdlg" style="width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0;padding:8px"><button id="vclose" class="pri">Close</button> <span class="mu">Tap the picture to zoom in or out</span><div style="overflow:auto;height:calc(100% - 52px);margin-top:8px"><img id="vimg" style="width:100%" alt="Screenshot"></div></dialog>
+
+<dialog id="mdlg"><div>
+ <h2 id="mt" style="margin-top:0"></h2><p class="mu" id="mmeta"></p>
+ <h2>Ingredients</h2><div id="mchk"></div>
+ <h2>Method</h2><p id="msteps"></p>
+ <p class="mu">Cook outdoors or in a well-ventilated space. Never use a camping stove or BBQ indoors.</p>
+ <div class="row"><button class="pri grow" id="msave">Save to my recipes</button><button id="mclose">Close</button></div>
+</div></dialog>
+
+<nav aria-label="Sections"><button data-t="stock" aria-current="true">Stock</button><button data-t="plan">Plan</button><button data-t="notes">Notes</button><button data-t="data">More</button></nav>
+
+<script>
+const $=s=>document.querySelector(s),K='stockpile.v1';
+const CATS=['Food: no cooking','Food: needs cooking','Water','Grey water','Stove fuel','Light & power','Medical','Hygiene','Other'];
+const LOCS=['Fridge','Freezer','Room temp'];
+const DEFP=['Kitchen','Garage','Man cave','Conservatory','Office'];
+const DEFU=['items','boxes','packs','tins','bottles','jars','rolls','canisters','buckets','litres'];
+const ESS=['Torches + spare batteries','Wind-up or battery radio','Power bank (charged)','Camping stove + fuel','Matches / lighter','Tin opener','First aid kit','Medication (spare supply)','Warm clothes + sleeping bags','Cash in small notes','Written phone numbers','Water containers (full)','Phone charger for car','Toilet roll + bin bags'];
+let S=null;try{S=JSON.parse(localStorage.getItem(K))}catch(e){}
+S=S||{items:[],known:{},set:{people:2,days:5,kcal:2000,water:3},chk:{}};
+S.places=S.places||DEFP.slice();S.units=S.units||DEFU.slice();S.set=S.set||{};S.set.grey=S.set.grey||10;S.notes=S.notes||[];
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const food=i=>i.cat.startsWith('Food');
+const fresh=i=>i.loc==='Fridge'||i.loc==='Freezer';
+let P={},fl='';
+const idb=new Promise((res,rej)=>{try{const r=indexedDB.open('stockpile',2);r.onupgradeneeded=()=>{const d=r.result;['p','n'].forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s)})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej()}catch(e){rej(e)}});
+const pset=(id,v,s='p')=>idb.then(db=>new Promise(r=>{const t=db.transaction(s,'readwrite');v?t.objectStore(s).put(v,id):t.objectStore(s).delete(id);t.oncomplete=()=>r()})).catch(()=>{});
+const pall=(s='p')=>idb.then(db=>new Promise(r=>{const o={},q=db.transaction(s).objectStore(s).openCursor();q.onsuccess=()=>{const c=q.result;if(c){o[c.key]=c.value;c.continue()}else r(o)};q.onerror=()=>r({})})).catch(()=>({}));
+const dleft=i=>i.exp?Math.ceil((new Date(i.exp)-new Date(new Date().toDateString()))/864e5):null;
+
+// ---- tabs
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('nav button').forEach(x=>x.removeAttribute('aria-current'));
+ b.setAttribute('aria-current','true');
+ ['stock','plan','notes','data'].forEach(t=>$('#t-'+t).hidden=t!==b.dataset.t);
+ if(b.dataset.t==='plan')plan();stopScan();window.scrollTo(0,0);
+});
+
+// ---- list
+function render(){
+ const q=$('#q').value.toLowerCase();
+ const its=S.items.filter(i=>(!fl||i.place===fl)&&(i.name+i.cat+i.loc+(i.place||'')).toLowerCase().includes(q))
+  .sort((a,b)=>(a.exp||'9')<(b.exp||'9')?-1:1);
+ $('#list').innerHTML=its.length?its.map(i=>{
+  const d=dleft(i);let b='';
+  if(d!==null)b=d<0?'<span class="bad">Expired</span>':d<=14?`<span class="warn">${d}d left</span>`:`<span class="mu">${i.exp}</span>`;
+  const info=[i.place||'No place set',fresh(i)?i.loc:'',i.cat].filter(Boolean).map(esc).join(' · ');
+  const ph=P[i.id];
+  return `<div class="card row" data-id="${i.id}"><div class="grow row" data-edit style="gap:10px">${ph?`<img class="th" src="${ph}" alt="">`:'<div class="th ph">No photo</div>'}<div class="grow"><b>${esc(i.name)}</b><div class="mu">${info}${b?' · ':''}${b}</div></div></div>
+  <button class="sq" data-m="-1" aria-label="One fewer">−</button><div style="min-width:48px;text-align:center"><b>${i.qty}</b><div class="mu" style="font-size:12px">${esc(i.unit||'')}</div></div><button class="sq" data-m="1" aria-label="One more">+</button></div>`}).join(''):
+  '<div class="card mu">Nothing here yet. Tap Scan to add your first item.</div>';
+ $('#stat').textContent=S.items.length+' items stored on this phone.';
+}
+$('#q').oninput=render;
+$('#list').onclick=e=>{
+ const c=e.target.closest('[data-id]');if(!c)return;const it=S.items.find(x=>x.id===c.dataset.id);
+ const m=e.target.closest('[data-m]');
+ if(m){it.qty=Math.max(0,(+it.qty||0)+ +m.dataset.m);save();render()}
+ else if(e.target.closest('[data-edit]'))openForm(it);
+};
+
+// ---- form
+const dlg=$('#dlg');
+$('#f-cat').innerHTML=CATS.map(c=>`<option>${c}</option>`).join('');
+$('#f-loc').innerHTML=LOCS.map(c=>`<option>${c}</option>`).join('');
+$('#f-cat').onchange=()=>{const c=$('#f-cat').value,w=c==='Water'||c==='Grey water';$('#f-vl').textContent=w?'Litres per unit':'kcal per unit';$('#f-v').closest('.row').hidden=!(w||food({cat:c}))};
+let editing=null,pend,lastPlace='',lastUnit='';
+function fillUnit(sel){const el=$('#f-unit'),cur=sel===undefined?el.value:sel;if(cur&&cur!=='__new'&&!S.units.includes(cur))S.units.push(cur);el.innerHTML='<option value="">(none)</option>'+S.units.map(u=>`<option>${esc(u)}</option>`).join('')+'<option value="__new">+ Add new unit…</option>';el.value=S.units.includes(cur)?cur:''}
+$('#f-unit').onchange=()=>{const el=$('#f-unit');if(el.value==='__new'){const n=(prompt('New unit, e.g. crates')||'').trim();if(n){if(!S.units.includes(n))S.units.push(n);save();fillUnit(n);unitsUI()}else el.value=lastUnit}lastUnit=el.value};
+function fillPlace(sel){const el=$('#f-place'),cur=sel===undefined?el.value:sel;el.innerHTML='<option value="">(not set)</option>'+S.places.map(p=>`<option>${esc(p)}</option>`).join('')+'<option value="__new">+ Add new place…</option>';el.value=S.places.includes(cur)?cur:''}
+$('#f-place').onchange=()=>{const el=$('#f-place');if(el.value==='__new'){const n=(prompt('New place name')||'').trim();if(n){if(!S.places.includes(n))S.places.push(n);save();fillPlace(n);placesUI()}else el.value=lastPlace}lastPlace=el.value};
+function showPv(src){const im=$('#pv');im.hidden=!src;if(src)im.src=src;$('#f-phx').hidden=!src}
+async function shrink(f,m=520,q=.72){const b=await createImageBitmap(f),k=Math.min(1,m/Math.max(b.width,b.height)),c=document.createElement('canvas');c.width=Math.round(b.width*k);c.height=Math.round(b.height*k);c.getContext('2d').drawImage(b,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q)}
+$('#f-ph').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{pend=await shrink(f);showPv(pend)}catch(x){alert('Could not read that photo. Try another.')}};
+$('#f-phx').onclick=()=>{pend=null;$('#f-ph').value='';showPv(null)};
+function openForm(it,note){
+ editing=it&&it.id&&S.items.find(x=>x.id===it.id)?it:null;it=it||{};pend=undefined;
+ $('#dtitle').textContent=editing?'Edit item':'New item';
+ $('#dnote').textContent=note||'';
+ $('#f-name').value=it.name||'';$('#f-qty').value=it.qty??1;fillUnit(it.unit||'');lastUnit=$('#f-unit').value;$('#f-v').value=it.v??'';
+ $('#f-cat').value=it.cat||CATS[0];$('#f-loc').value=it.loc||'Room temp';$('#f-exp').value=it.exp||'';$('#f-code').value=it.code||'';
+ fillPlace(it.place||'');lastPlace=$('#f-place').value;$('#f-ph').value='';showPv(it.id?P[it.id]:null);
+ $('#f-cat').onchange();$('#f-del').hidden=!editing;dlg.showModal();
+}
+$('#addBtn').onclick=()=>openForm();
+$('#f-cancel').onclick=()=>dlg.close();
+$('#f-del').onclick=()=>{if(editing&&confirm('Delete this item?')){delete P[editing.id];pset(editing.id,null);S.items=S.items.filter(x=>x!==editing);save();render();placesUI();dlg.close()}};
+$('#f').onsubmit=()=>{
+ const it=editing||{id:uid()};
+ Object.assign(it,{name:$('#f-name').value.trim(),qty:+$('#f-qty').value||0,unit:$('#f-unit').value,v:$('#f-v').value===''?'':+$('#f-v').value,cat:$('#f-cat').value,loc:$('#f-loc').value,place:$('#f-place').value,exp:$('#f-exp').value,code:$('#f-code').value});
+ if(!editing)S.items.push(it);
+ if(pend!==undefined){if(pend)P[it.id]=pend;else delete P[it.id];pset(it.id,pend)}
+ if(it.code)S.known[it.code]={name:it.name,cat:it.cat,v:it.v,unit:it.unit,place:it.place};
+ save();render();placesUI();
+};
+
+// ---- notes
+const NK=['Recipe','Important info','Contacts & numbers','Other'];
+let N={},nfl='',ned=null,nimgs=[],nadd=[];
+const STOP=new Set(['tin','tins','can','cans','packet','pack','packs','and','the','tbsp','tsp','cup','cups','small','large','medium','chopped','tinned','dried','fresh','optional','taste','pinch','handful','some','spoon','spoons','teaspoon','tablespoon','litre','slices','slice','with','any','kind','such','mild','instant']);
+const kw=l=>l.toLowerCase().replace(/[^a-z\s]/g,' ').split(/\s+/).filter(w=>w.length>2&&!STOP.has(w)).map(w=>w.replace(/(es|s)$/,'')).filter(w=>w.length>2);
+const ilines=t=>t.split('\n').map(s=>s.trim()).filter(Boolean).map(s=>({t:s,k:s.split(/\bor\b|,|\//i).map(kw).filter(a=>a.length),o:/optional/i.test(s)}));
+const mlines=m=>m.i.map(([t,k,o])=>({t,k:k.map(x=>[x]),o:!!o}));
+function chk(L){return L.map(l=>({...l,hit:l.k.length?S.items.filter(i=>food(i)&&+i.qty>0&&l.k.some(g=>g.every(k=>i.name.toLowerCase().includes(k)))).sort((a,b)=>b.qty-a.qty)[0]:null}))}
+function chkHtml(r){const q=r.filter(x=>!x.o),n=q.filter(x=>x.hit).length;
+ return `<div class="mu">${n} of ${q.length} needed ingredients in stock. Matched by name, so check the item shown.</div>`+r.map(x=>`<div class="chk"><span class="${x.hit?'ok':x.o?'mu':'warn'}" aria-hidden="true" style="width:18px">${x.hit?'✓':x.o?'–':'✗'}</span><span style="font-size:16px">${esc(x.t)}<div class="mu">${x.hit?esc(x.hit.name)+' · '+x.hit.qty+' '+esc(x.hit.unit||''):x.o?'Optional':'Not in your stock'}</div></span></div>`).join('')}
+const MEALS=[
+{id:'m1',t:'Beans on toast',b:1,m:10,i:[['2 tins baked beans',['baked bean','beans']],['4 slices bread, or crackers',['bread','cracker','roll','wrap']]],s:'Warm the beans in a pan on one burner, stirring now and then. Toast the bread in a dry frying pan. Pile the beans on top.'},
+{id:'m2',t:'One-pan tomato pasta',b:1,m:20,i:[['200g pasta',['pasta','spaghetti','penne','fusilli','macaroni','tagliatelle']],['1 tin chopped tomatoes',['tomato']],['Stock cube or mixed herbs',['stock','herb','oxo','bouillon'],1]],s:'Put the pasta, tomatoes and one empty tin of water in a pan with the stock cube or herbs. Simmer for 12 to 15 minutes, stirring often and adding a splash more water if it dries out, until the pasta is soft and the sauce is thick.'},
+{id:'m3',t:'Tinned chilli with rice',b:2,m:25,i:[['1 tin kidney beans',['kidney']],['1 tin chopped tomatoes',['tomato']],['1 tin sweetcorn',['sweetcorn','corn'],1],['Chilli powder or mild spice',['chilli','spice','paprika','cumin'],1],['150g rice, or 2 tortilla wraps',['rice','tortilla','wrap']]],s:'Burner 1: cook the rice covered in twice its volume of water for about 12 minutes. Burner 2: tip the beans, tomatoes and sweetcorn into a pan with the spice and simmer for 10 minutes. Serve over the rice.'},
+{id:'m4',t:'Tuna pasta',b:1,m:15,i:[['200g pasta',['pasta','spaghetti','penne','fusilli','macaroni','tagliatelle']],['1 tin tuna',['tuna']],['1 tin sweetcorn',['sweetcorn','corn'],1],['Mayo, pesto or olive oil',['mayo','pesto','oil'],1]],s:'Boil the pasta until soft and drain. Stir in the tuna, the sweetcorn and a spoonful of mayo, pesto or oil. Eat warm or cold.'},
+{id:'m5',t:'Chickpea curry',b:2,m:25,i:[['1 tin chickpeas',['chickpea']],['1 tin chopped tomatoes',['tomato']],['2 tbsp curry paste or powder',['curry','korma','tikka','masala']],['150g rice',['rice']]],s:'Burner 1: cook the rice covered in twice its volume of water for about 12 minutes. Burner 2: simmer the chickpeas, tomatoes and curry paste for 15 minutes, adding a little water if it gets thick. Serve over the rice.'},
+{id:'m6',t:'Soup and bread',b:1,m:8,i:[['2 tins soup',['soup']],['Bread, rolls or crackers',['bread','roll','cracker','wrap']]],s:'Heat the soup gently in a pan, stirring so it does not catch. Serve with bread or crackers.'},
+{id:'m7',t:'Porridge',b:1,m:8,i:[['80g porridge oats',['oat','porridge']],['400ml milk or water',['milk'],1],['Honey, sugar or jam',['honey','sugar','jam','syrup'],1]],s:'Stir the oats into the milk or water in a pan. Heat gently, stirring, for 4 to 5 minutes until thick. Sweeten to taste.'},
+{id:'m8',t:'Rice and beans bowl',b:2,m:25,i:[['150g rice',['rice']],['1 tin beans (any kind)',['bean']],['1 tin chopped tomatoes',['tomato']]],s:'Burner 1: cook the rice covered in twice its volume of water for about 12 minutes. Burner 2: heat the beans and tomatoes together for 10 minutes. Spoon over the rice.'},
+{id:'m9',t:'Noodle bowl',b:1,m:10,i:[['2 packs instant noodles',['noodle']],['Tinned veg such as sweetcorn or peas',['corn','pea','carrot','veg'],1],['Stock cube or soy sauce',['stock','soy','oxo','bouillon'],1]],s:'Boil about 600ml of water with the stock cube. Add the noodles and any drained tinned veg and cook for 3 to 4 minutes.'},
+{id:'m10',t:'Corned beef hash',b:1,m:15,i:[['1 tin corned beef',['corned beef']],['Instant mash or tinned potatoes',['mash','potato']],['1 tin baked beans',['bean'],1]],s:'Make up the instant mash with hot water, or warm drained tinned potatoes and crush them. Break the corned beef into a frying pan and heat through. Mix in the potato and serve with the beans.'},
+{id:'m11',t:'Couscous with chickpeas',b:1,m:10,i:[['150g couscous',['couscous']],['1 tin chickpeas',['chickpea']],['1 tin sweetcorn or tomatoes',['corn','tomato'],1]],s:'Boil 200ml of water, pour it over the couscous, cover and leave for 5 minutes, then fluff with a fork. Stir in the drained chickpeas and the sweetcorn or tomatoes. Good warm or cold.'},
+{id:'m12',t:'Tinned fish and rice',b:1,m:15,i:[['150g rice',['rice']],['1 tin mackerel, sardines or salmon',['mackerel','sardine','salmon']],['1 tin sweetcorn or peas',['corn','pea'],1]],s:'Cook the rice covered in twice its volume of water for about 12 minutes. Flake in the fish and add the sweetcorn or peas. Warm through for a minute.'}];
+const mscore=m=>{const r=chk(mlines(m)).filter(x=>!x.o);return [r.filter(x=>x.hit).length,r.length]};
+let nb=0,curMeal=null;
+function nrender(){
+ const q=$('#nq').value.toLowerCase(),meals=nfl==='Meal ideas';
+ $('#nchips').innerHTML=['All','Meal ideas',...NK].map(k=>`<button data-k="${esc(k)}" aria-pressed="${(k==='All'?'':k)===nfl}">${esc(k)}</button>`).join('');
+ $('#nchips2').innerHTML=meals?[['Any burners',0],['1 burner',1],['2 burners',2]].map(([l,v])=>`<button data-b="${v}" aria-pressed="${nb===v}">${l}</button>`).join(''):'';
+ if(meals){
+  const L=MEALS.filter(m=>(!nb||m.b<=nb)&&(m.t+m.i.map(x=>x[0]).join(' ')).toLowerCase().includes(q)).map(m=>({m,s:mscore(m)})).sort((a,b)=>(b.s[0]/b.s[1])-(a.s[0]/a.s[1])||a.m.b-b.m.b);
+  $('#nlist').innerHTML=L.length?L.map(({m,s})=>`<div class="card" data-meal="${m.id}" role="button" tabindex="0"><b>${esc(m.t)}</b><div class="mu">${m.b} burner${m.b>1?'s':''} · about ${m.m} min · serves 2</div><div class="${s[0]===s[1]?'ok':'mu'}">${s[0]===s[1]?'You have everything needed':s[0]+' of '+s[1]+' needed ingredients in stock'}</div></div>`).join(''):'<div class="card mu">No meals match.</div>';
+  return}
+ const L=S.notes.filter(n=>(!nfl||n.kind===nfl)&&(n.title+n.text+(n.ing||'')+n.kind).toLowerCase().includes(q)).sort((a,b)=>b.t-a.t);
+ $('#nlist').innerHTML=L.length?L.map(n=>{const im=n.imgs.find(i=>N[i]);let sn=esc((n.text||'').split('\n')[0]);
+  if(n.kind==='Recipe'&&(n.ing||'').trim()){const r=chk(ilines(n.ing)).filter(x=>!x.o),k=r.filter(x=>x.hit).length;sn=`<span class="${k===r.length?'ok':'warn'}">${k} of ${r.length} ingredients in stock</span>`}
+  return `<div class="card row" data-n="${n.id}" role="button" tabindex="0">${im?`<img class="th" src="${N[im]}" alt="">`:'<div class="th ph">No image</div>'}<div class="grow" style="min-width:0"><b>${esc(n.title)}</b><div class="mu">${esc(n.kind)}${n.imgs.length?` · ${n.imgs.length} image${n.imgs.length>1?'s':''}`:''}</div><div class="mu" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sn}</div></div></div>`}).join(''):
+  '<div class="card mu">Nothing saved yet. Add a recipe, or save screenshots of important information. Try Meal ideas for easy one and two burner meals.</div>';
+}
+$('#nq').oninput=nrender;
+$('#nchips').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;nfl=b.dataset.k==='All'?'':b.dataset.k;nrender()};
+$('#nchips2').onclick=e=>{const b=e.target.closest('[data-b]');if(!b)return;nb=+b.dataset.b;nrender()};
+const openAt=c=>{if(!c)return;if(c.dataset.meal)openMeal(c.dataset.meal);else openNote(S.notes.find(n=>n.id===c.dataset.n))};
+$('#nlist').onclick=e=>openAt(e.target.closest('[data-n],[data-meal]'));
+$('#nlist').onkeydown=e=>{if(e.key==='Enter')openAt(e.target.closest('[data-n],[data-meal]'))};
+function openMeal(id){const m=MEALS.find(x=>x.id===id);curMeal=m;$('#mt').textContent=m.t;$('#mmeta').textContent=`Serves 2 · ${m.b} burner${m.b>1?'s':''} · about ${m.m} min`;$('#mchk').innerHTML=chkHtml(chk(mlines(m)));$('#msteps').textContent=m.s;$('#mdlg').showModal();$('#mdlg').scrollTop=0}
+$('#mclose').onclick=()=>$('#mdlg').close();
+$('#msave').onclick=()=>{const m=curMeal;if(S.notes.some(n=>n.title===m.t)){alert('Already in your recipes.');return}S.notes.push({id:uid(),title:m.t,kind:'Recipe',ing:m.i.map(x=>x[0]+(x[2]?' (optional)':'')).join('\n'),text:m.s,imgs:[],t:Date.now()});save();$('#mdlg').close();nfl='Recipe';nrender()};
+$('#n-kind').innerHTML=NK.map(k=>`<option>${k}</option>`).join('');
+$('#n-kind').onchange=()=>{const r=$('#n-kind').value==='Recipe';$('#n-il').hidden=$('#n-ing').hidden=$('#n-chk').hidden=!r;$('#n-tl').textContent=r?'Method':'Details';$('#n-text').placeholder=r?'Steps':'Write the details here';ichk()};
+function ichk(){$('#n-chk').innerHTML=$('#n-ing').value.trim()?chkHtml(chk(ilines($('#n-ing').value))):''}
+$('#n-ing').oninput=ichk;
+function ngrid(){$('#n-imgs').innerHTML=nimgs.map(id=>`<div><img data-v="${id}" src="${N[id]||''}" alt="Tap to view"><button type="button" data-x="${id}" aria-label="Remove image">✕</button></div>`).join('')}
+function openNote(n){
+ ned=n||null;nimgs=n?n.imgs.slice():[];nadd=[];
+ $('#ntitle').textContent=n?'Edit note':'New note';
+ $('#n-title').value=n?n.title:'';$('#n-kind').value=n?n.kind:NK[0];$('#n-text').value=n?n.text:'';$('#n-ing').value=n?(n.ing||''):'';$('#n-img').value='';
+ $('#n-kind').onchange();ngrid();$('#n-del').hidden=!n;$('#ndlg').showModal();$('#ndlg').scrollTop=0;
+}
+$('#addNote').onclick=()=>openNote();
+$('#n-cancel').onclick=()=>{nadd.forEach(id=>delete N[id]);$('#ndlg').close()};
+$('#n-img').onchange=async e=>{for(const f of e.target.files){try{const id=uid(),d=await shrink(f,1600,.8);N[id]=d;nadd.push(id);nimgs.push(id)}catch(x){alert('Could not read '+f.name)}}e.target.value='';ngrid()};
+$('#n-imgs').onclick=e=>{const x=e.target.closest('[data-x]'),v=e.target.closest('[data-v]');
+ if(x){nimgs=nimgs.filter(i=>i!==x.dataset.x);ngrid()}
+ else if(v){$('#vimg').src=N[v.dataset.v];$('#vimg').style.width='100%';$('#vdlg').showModal()}};
+$('#vimg').onclick=()=>{const i=$('#vimg');i.style.width=i.style.width==='250%'?'100%':'250%'};
+$('#vclose').onclick=()=>$('#vdlg').close();
+$('#n-del').onclick=()=>{if(ned&&confirm('Delete this note and its images?')){ned.imgs.concat(nadd).forEach(id=>{delete N[id];pset(id,null,'n')});S.notes=S.notes.filter(n=>n!==ned);save();nrender();$('#ndlg').close()}};
+$('#nf').onsubmit=()=>{
+ const n=ned||{id:uid()},prev=ned?ned.imgs.slice():[];
+ Object.assign(n,{title:$('#n-title').value.trim(),kind:$('#n-kind').value,ing:$('#n-kind').value==='Recipe'?$('#n-ing').value:'',text:$('#n-text').value,imgs:nimgs.slice(),t:Date.now()});
+ if(!ned)S.notes.push(n);
+ nadd.filter(id=>nimgs.includes(id)).forEach(id=>pset(id,N[id],'n'));
+ nadd.filter(id=>!nimgs.includes(id)).forEach(id=>delete N[id]);
+ prev.filter(id=>!nimgs.includes(id)).forEach(id=>{delete N[id];pset(id,null,'n')});
+ save();nrender();
+};
+
+// ---- places
+function chips(){$('#chips').innerHTML=['All',...S.places].map(p=>`<button data-p="${esc(p)}" aria-pressed="${(p==='All'?'':p)===fl}">${esc(p)}</button>`).join('')}
+$('#chips').onclick=e=>{const b=e.target.closest('[data-p]');if(!b)return;fl=b.dataset.p==='All'?'':b.dataset.p;chips();render()};
+function placesUI(){
+ $('#places').innerHTML=S.places.map((p,i)=>{const n=S.items.filter(x=>x.place===p).length;return `<div class="row" style="margin-bottom:6px"><div class="grow">${esc(p)} <span class="mu">${n} item${n===1?'':'s'}</span></div><button data-r="${i}">Rename</button><button data-d="${i}">Remove</button></div>`}).join('');
+ fillPlace();chips();
+}
+$('#places').onclick=e=>{const r=e.target.dataset.r,d=e.target.dataset.d;
+ if(r!==undefined){const old=S.places[r],nn=(prompt('Rename place',old)||'').trim();if(nn&&!S.places.includes(nn)){S.items.forEach(i=>{if(i.place===old)i.place=nn});S.places[r]=nn;if(fl===old)fl=nn;save();placesUI();render()}}
+ else if(d!==undefined){const old=S.places[d],n=S.items.filter(x=>x.place===old).length;if(confirm(n?`Remove "${old}"? ${n} item${n>1?'s':''} will show as having no place.`:`Remove "${old}"?`)){S.items.forEach(i=>{if(i.place===old)i.place=''});S.places.splice(d,1);if(fl===old)fl='';save();placesUI();render()}}};
+function unitsUI(){$('#units').innerHTML=S.units.map((u,i)=>`<button data-u="${i}" style="min-height:36px;margin:0 6px 6px 0" aria-label="Remove ${esc(u)}">${esc(u)} ✕</button>`).join('');fillUnit()}
+$('#units').onclick=e=>{const b=e.target.closest('[data-u]');if(!b)return;const u=S.units[b.dataset.u];if(confirm('Remove "'+u+'" from the list? Items already using it keep it.')){S.units.splice(b.dataset.u,1);save();unitsUI()}};
+$('#nuAdd').onclick=()=>{const n=$('#nu').value.trim();if(n&&!S.units.includes(n)){S.units.push(n);$('#nu').value='';save();unitsUI()}};
+$('#npAdd').onclick=()=>{const n=$('#np').value.trim();if(n&&!S.places.includes(n)){S.places.push(n);$('#np').value='';save();placesUI()}};
+
+// ---- barcode
+let stream=null,scanning=false;
+async function lookup(code){
+ if(S.known[code])return {...S.known[code],src:'your own list'};
+ try{
+  const r=await fetch('https://world.openfoodfacts.org/api/v2/product/'+code+'.json?fields=product_name,brands,quantity,product_quantity,nutriments');
+  const j=await r.json();if(j.status!==1)return null;
+  const p=j.product,k=(p.nutriments||{})['energy-kcal_100g'],g=parseFloat(p.product_quantity);
+  const nm=[p.brands&&p.brands.split(',')[0],p.product_name,p.quantity].filter(Boolean).join(' ');
+  return {name:nm,cat:CATS[0],v:(k&&g)?Math.round(k*g/100):'',src:'Open Food Facts'};
+ }catch(e){return 'offline'}
+}
+async function gotCode(code){
+ code=String(code).replace(/\D/g,'');if(!code)return;
+ const have=S.items.find(i=>i.code===code);
+ if(have){have.qty=(+have.qty||0)+1;save();render();$('#scanmsg').textContent=have.name+' now '+have.qty+'. Scan another or close.';return}
+ $('#scanmsg').textContent='Looking up '+code+'…';
+ const r=await lookup(code);
+ if(r&&r!=='offline'){stopScan();openForm({...r,code,qty:1,loc:'Room temp'},'Found in '+r.src+'. Check the details and add a use-by date.')}
+ else{stopScan();openForm({code,qty:1,loc:'Room temp'},r==='offline'?'No internet, so fill this in by hand. It will be remembered for next time.':'Not in the database. Fill it in once and it will be remembered next time.')}
+}
+async function startScan(){
+ $('#scanbox').hidden=false;
+ if(!('BarcodeDetector' in window)){$('#scanmsg').textContent='Camera scanning isn\'t available in this browser. Type the number under the barcode instead.';return}
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+  const v=$('#vid');v.srcObject=stream;await v.play();scanning=true;$('#scanmsg').textContent='Point the camera at a barcode.';
+  const d=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});
+  (async function loop(){if(!scanning)return;try{const c=await d.detect(v);if(c.length){scanning=false;await gotCode(c[0].rawValue);if($('#scanbox').hidden===false){scanning=true}}}catch(e){}setTimeout(loop,300)})();
+ }catch(e){$('#scanmsg').textContent='Camera blocked. Allow camera access for this site, or type the number.'}
+}
+function stopScan(){scanning=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}$('#scanbox').hidden=true}
+$('#scanBtn').onclick=startScan;$('#scanStop').onclick=stopScan;
+$('#manualGo').onclick=()=>{const c=$('#manual').value;$('#manual').value='';gotCode(c)};
+
+// ---- plan
+function plan(){
+ const s=S.set,p=+s.people||1,dy=+s.days||1,need=p*s.kcal*dy;
+ ['people','days','kcal','water','grey'].forEach(k=>$('#s-'+k).value=s[k]);
+ let ready=0,cook=0,fr=0,miss=0,water=0,grey=0,fuel=0;
+ S.items.forEach(i=>{const q=+i.qty||0,v=+i.v||0;
+  if(food(i)){if(!v&&q)miss++;const k=v*q;if(fresh(i))fr+=k;else if(i.cat==='Food: no cooking')ready+=k;else cook+=k}
+  else if(i.cat==='Water')water+=v*q;else if(i.cat==='Grey water')grey+=v*q;else if(i.cat==='Stove fuel')fuel+=q});
+ const shelf=ready+cook,days=shelf/(p*s.kcal),wn=p*s.water*dy,wd=water/(p*s.water),gn=p*s.grey*dy,gd=s.grey?grey/(p*s.grey):0;
+ const pct=x=>Math.min(100,Math.round(x*100));
+ $('#plan').innerHTML=`
+ <div class="card"><div class="mu">Shelf-stable food lasts</div><div class="big">${days.toFixed(1)} <span style="font-size:18px">of ${dy} days</span></div>
+  <div class="bar"><i style="width:${pct(days/dy)}%"></i></div>
+  <div class="mu">${Math.round(ready).toLocaleString()} kcal need no cooking, ${Math.round(cook).toLocaleString()} kcal need a stove. Target ${need.toLocaleString()} kcal.</div>
+  ${fr?`<div class="mu">Plus ${Math.round(fr).toLocaleString()} kcal in fridge/freezer. Count on using it in the first 1–2 days.</div>`:''}
+  ${miss?`<div class="warn">${miss} food item${miss>1?'s have':' has'} no kcal entered, so aren't counted.</div>`:''}
+  ${cook>0&&fuel===0?'<div class="warn">You have food that needs cooking but no stove fuel logged.</div>':''}</div>
+ <div class="card"><div class="mu">Drinking and cooking water</div><div class="big">${water.toFixed(0)} L <span style="font-size:18px">of ${wn.toFixed(0)} L</span></div>
+  <div class="bar"><i style="width:${pct(wd/dy)}%"></i></div><div class="mu">Covers ${wd.toFixed(1)} days. Count only water that is safe to drink.</div></div>
+ <div class="card"><div class="mu">Grey water (washing, flushing, not for drinking)</div><div class="big">${grey.toFixed(0)} L <span style="font-size:18px">of ${gn.toFixed(0)} L</span></div>
+  <div class="bar"><i style="width:${pct(gn?grey/gn:0)}%"></i></div><div class="mu">Covers ${gd.toFixed(1)} days. Log baths, buckets and water butts under the Grey water type.</div></div>
+ <div class="card"><div class="mu">Stove fuel items logged</div><div class="big">${fuel}</div></div>`;
+ const rank={Fridge:0,Freezer:1,'Room temp':2};
+ const eat=S.items.filter(i=>food(i)&&+i.qty>0&&(fresh(i)||(i.exp&&dleft(i)<=60))).sort((a,b)=>(rank[a.loc]-rank[b.loc])||((a.exp||'9')<(b.exp||'9')?-1:1));
+ $('#eat').innerHTML=eat.length?'<ol>'+eat.slice(0,20).map(i=>`<li>${esc(i.name)} <span class="mu">(${i.loc}${i.exp?', '+i.exp:''})</span></li>`).join('')+'</ol>':'<span class="mu">Add fridge, freezer and short-dated items to see an order to eat them in. Fridge first (safe about 4 hours without power), then freezer, then the rest.</span>';
+ $('#ess').innerHTML=ESS.map((e,n)=>`<label class="chk"><input type="checkbox" data-n="${n}" ${S.chk[n]?'checked':''}><span style="color:var(--tx);font-size:16px">${e}</span></label>`).join('');
+}
+['people','days','kcal','water','grey'].forEach(k=>$('#s-'+k).oninput=e=>{S.set[k]=+e.target.value||1;save();plan()});
+$('#ess').onchange=e=>{S.chk[e.target.dataset.n]=e.target.checked;save()};
+
+// ---- backup
+$('#exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({...S,photos:P,nimgs:N})],{type:'application/json'}));a.download='stockpile-'+new Date().toISOString().slice(0,10)+'.json';a.click()};
+$('#imp').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());if(!j.items)throw 0;if(confirm('Replace everything on this phone with the backup?')){P=j.photos||{};N=j.nimgs||{};delete j.photos;delete j.nimgs;S=j;S.notes=S.notes||[];S.places=S.places||DEFP.slice();S.units=S.units||DEFU.slice();S.set=S.set||{};S.set.grey=S.set.grey||10;save();await Promise.all(Object.entries(P).map(([k,v])=>pset(k,v)).concat(Object.entries(N).map(([k,v])=>pset(k,v,'n'))));placesUI();unitsUI();render();nrender();plan()}}catch(x){alert('That file isn\'t a Stockpile backup.')}};
+$('#prt').onclick=()=>{$('#t-stock').hidden=false;window.print()};
+
+placesUI();unitsUI();render();nrender();pall('n').then(m=>{N=m;nrender()});pall().then(m=>{P=m;render()});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>
