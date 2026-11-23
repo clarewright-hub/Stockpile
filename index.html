@@ -48,6 +48,7 @@ ol{padding-left:20px;margin:6px 0}
 textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg)}
 [hidden]{display:none!important}
 #addNote{white-space:nowrap}
+#top{position:fixed;right:14px;bottom:calc(70px + env(safe-area-inset-bottom));width:48px;height:48px;padding:0;border-radius:24px;background:var(--ac);color:var(--on);border:0;font-size:24px;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:5}
 @media print{nav,button,.noprint{display:none!important}body{padding:0}section[hidden]{display:block!important}}
 </style></head><body>
 <main>
@@ -115,8 +116,10 @@ textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;ba
  <div class="row">
   <div class="grow"><label for="f-qty">Quantity</label><input id="f-qty" type="number" min="0" step="1" inputmode="numeric"></div>
   <div class="grow"><label for="f-unit">Unit</label><select id="f-unit"></select></div>
-  </div><div class="row"><div class="grow"><label for="f-v" id="f-vl">kcal per unit</label><input id="f-v" type="number" min="0" step="any" inputmode="decimal"></div>
+  </div><label for="f-size">Size or weight (e.g. 400g, 5L)</label><input id="f-size" placeholder="400g">
+ <div class="row"><div class="grow"><label for="f-v" id="f-vl">kcal per unit</label><input id="f-v" type="number" min="0" step="any" inputmode="decimal"></div>
  </div>
+ <div id="vwarn" class="warn" hidden></div>
  <label for="f-cat">Type</label><select id="f-cat"></select>
  <div class="row">
   <div class="grow"><label for="f-loc">Stored</label><select id="f-loc"></select></div>
@@ -150,11 +153,12 @@ textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;ba
  <div class="row"><button class="pri grow" id="msave">Save to my recipes</button><button id="mclose">Close</button></div>
 </div></dialog>
 
+<button id="top" aria-label="Back to top" hidden>↑</button>
 <nav aria-label="Sections"><button data-t="stock" aria-current="true">Stock</button><button data-t="plan">Plan</button><button data-t="notes">Notes</button><button data-t="data">More</button></nav>
 
 <script>
 const $=s=>document.querySelector(s),K='stockpile.v1';
-const CATS=['Food: no cooking','Food: needs cooking','Water','Grey water','Stove fuel','Light & power','Medical','Hygiene','Other'];
+const CATS=['Food: no cooking','Food: heat up','Food: needs cooking','Water','Grey water','Stove fuel','Light & power','Medical','Hygiene','Cleaning','Other'];
 const LOCS=['Fridge','Freezer','Room temp'];
 const DEFP=['Kitchen','Garage','Man cave','Conservatory','Office'];
 const DEFU=['items','boxes','packs','tins','bottles','jars','rolls','canisters','buckets','litres'];
@@ -184,14 +188,14 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
 // ---- list
 function render(){
  const q=$('#q').value.toLowerCase();
- const its=S.items.filter(i=>(!fl||i.place===fl)&&(i.name+i.cat+i.loc+(i.place||'')).toLowerCase().includes(q))
+ const its=S.items.filter(i=>(!fl||i.place===fl)&&(i.name+(i.size||'')+i.cat+i.loc+(i.place||'')).toLowerCase().includes(q))
   .sort((a,b)=>(a.exp||'9')<(b.exp||'9')?-1:1);
  $('#list').innerHTML=its.length?its.map(i=>{
   const d=dleft(i);let b='';
   if(d!==null)b=d<0?'<span class="bad">Expired</span>':d<=14?`<span class="warn">${d}d left</span>`:`<span class="mu">${i.exp}</span>`;
   const info=[i.place||'No place set',fresh(i)?i.loc:'',i.cat].filter(Boolean).map(esc).join(' · ');
   const ph=P[i.id];
-  return `<div class="card row" data-id="${i.id}"><div class="grow row" data-edit style="gap:10px">${ph?`<img class="th" src="${ph}" alt="">`:'<div class="th ph">No photo</div>'}<div class="grow"><b>${esc(i.name)}</b><div class="mu">${info}${b?' · ':''}${b}</div></div></div>
+  return `<div class="card row" data-id="${i.id}"><div class="grow row" data-edit style="gap:10px">${ph?`<img class="th" src="${ph}" alt="">`:'<div class="th ph">No photo</div>'}<div class="grow"><b>${esc(i.name)}</b>${i.size?` <span class="mu">${esc(i.size)}</span>`:''}<div class="mu">${info}${b?' · ':''}${b}</div></div></div>
   <button class="sq" data-m="-1" aria-label="One fewer">−</button><div style="min-width:48px;text-align:center"><b>${i.qty}</b><div class="mu" style="font-size:12px">${esc(i.unit||'')}</div></div><button class="sq" data-m="1" aria-label="One more">+</button></div>`}).join(''):
   '<div class="card mu">Nothing here yet. Tap Scan to add your first item.</div>';
  $('#stat').textContent=S.items.length+' items stored on this phone.';
@@ -208,7 +212,13 @@ $('#list').onclick=e=>{
 const dlg=$('#dlg');
 $('#f-cat').innerHTML=CATS.map(c=>`<option>${c}</option>`).join('');
 $('#f-loc').innerHTML=LOCS.map(c=>`<option>${c}</option>`).join('');
-$('#f-cat').onchange=()=>{const c=$('#f-cat').value,w=c==='Water'||c==='Grey water';$('#f-vl').textContent=w?'Litres per unit':'kcal per unit';$('#f-v').closest('.row').hidden=!(w||food({cat:c}))};
+let prevCat='';
+const isW=c=>c==='Water'||c==='Grey water',cls=c=>isW(c)?'w':food({cat:c})?'f':'o';
+function litres(s){const m=String(s||'').toLowerCase().match(/([\d.,]+)\s*(ml|cl|l|ltr|litres?|liters?)\b/);if(!m)return 0;const n=parseFloat(m[1].replace(',','.'));return m[2]==='ml'?n/1000:m[2]==='cl'?n/100:n}
+function autoV(){if(isW($('#f-cat').value)&&$('#f-v').value===''){const l=litres($('#f-size').value);if(l)$('#f-v').value=l}}
+function vcheck(){const w=$('#vwarn'),x=+$('#f-v').value;w.hidden=!($('#f-cat').value==='Water'&&x>30);if(!w.hidden)w.textContent='That is a lot of water per unit. Is this in litres, not calories?'}
+$('#f-v').oninput=vcheck;$('#f-size').oninput=()=>{autoV();vcheck()};
+$('#f-cat').onchange=()=>{const c=$('#f-cat').value,w=isW(c);if(prevCat&&cls(prevCat)!==cls(c))$('#f-v').value='';prevCat=c;autoV();$('#f-vl').textContent=w?'Litres per unit':'kcal per unit';$('#f-v').closest('.row').hidden=!(w||food({cat:c}));vcheck()};
 let editing=null,pend,lastPlace='',lastUnit='';
 function fillUnit(sel){const el=$('#f-unit'),cur=sel===undefined?el.value:sel;if(cur&&cur!=='__new'&&!S.units.includes(cur))S.units.push(cur);el.innerHTML='<option value="">(none)</option>'+S.units.map(u=>`<option>${esc(u)}</option>`).join('')+'<option value="__new">+ Add new unit…</option>';el.value=S.units.includes(cur)?cur:''}
 $('#f-unit').onchange=()=>{const el=$('#f-unit');if(el.value==='__new'){const n=(prompt('New unit, e.g. crates')||'').trim();if(n){if(!S.units.includes(n))S.units.push(n);save();fillUnit(n);unitsUI()}else el.value=lastUnit}lastUnit=el.value};
@@ -222,20 +232,20 @@ function openForm(it,note){
  editing=it&&it.id&&S.items.find(x=>x.id===it.id)?it:null;it=it||{};pend=undefined;
  $('#dtitle').textContent=editing?'Edit item':'New item';
  $('#dnote').textContent=note||'';
- $('#f-name').value=it.name||'';$('#f-qty').value=it.qty??1;fillUnit(it.unit||'');lastUnit=$('#f-unit').value;$('#f-v').value=it.v??'';
+ $('#f-name').value=it.name||'';$('#f-size').value=it.size||'';$('#f-qty').value=it.qty??1;fillUnit(it.unit||'');lastUnit=$('#f-unit').value;$('#f-v').value=it.v??'';
  $('#f-cat').value=it.cat||CATS[0];$('#f-loc').value=it.loc||'Room temp';$('#f-exp').value=it.exp||'';$('#f-code').value=it.code||'';
  fillPlace(it.place||'');lastPlace=$('#f-place').value;$('#f-ph').value='';showPv(it.id?P[it.id]:null);
- $('#f-cat').onchange();$('#f-del').hidden=!editing;dlg.showModal();
+ prevCat=$('#f-cat').value;$('#f-cat').onchange();$('#f-del').hidden=!editing;dlg.showModal();
 }
 $('#addBtn').onclick=()=>openForm();
 $('#f-cancel').onclick=()=>dlg.close();
 $('#f-del').onclick=()=>{if(editing&&confirm('Delete this item?')){delete P[editing.id];pset(editing.id,null);S.items=S.items.filter(x=>x!==editing);save();render();placesUI();dlg.close()}};
 $('#f').onsubmit=()=>{
  const it=editing||{id:uid()};
- Object.assign(it,{name:$('#f-name').value.trim(),qty:+$('#f-qty').value||0,unit:$('#f-unit').value,v:$('#f-v').value===''?'':+$('#f-v').value,cat:$('#f-cat').value,loc:$('#f-loc').value,place:$('#f-place').value,exp:$('#f-exp').value,code:$('#f-code').value});
+ Object.assign(it,{name:$('#f-name').value.trim(),qty:+$('#f-qty').value||0,unit:$('#f-unit').value,v:$('#f-v').value===''?'':+$('#f-v').value,cat:$('#f-cat').value,loc:$('#f-loc').value,place:$('#f-place').value,size:$('#f-size').value.trim(),exp:$('#f-exp').value,code:$('#f-code').value});
  if(!editing)S.items.push(it);
  if(pend!==undefined){if(pend)P[it.id]=pend;else delete P[it.id];pset(it.id,pend)}
- if(it.code)S.known[it.code]={name:it.name,cat:it.cat,v:it.v,unit:it.unit,place:it.place};
+ if(it.code)S.known[it.code]={name:it.name,size:it.size,cat:it.cat,v:it.v,unit:it.unit,place:it.place};
  save();render();placesUI();
 };
 
@@ -336,13 +346,17 @@ $('#npAdd').onclick=()=>{const n=$('#np').value.trim();if(n&&!S.places.includes(
 let stream=null,scanning=false;
 async function lookup(code){
  if(S.known[code])return {...S.known[code],src:'your own list'};
- try{
-  const r=await fetch('https://world.openfoodfacts.org/api/v2/product/'+code+'.json?fields=product_name,brands,quantity,product_quantity,nutriments');
-  const j=await r.json();if(j.status!==1)return null;
+ const H=[['world.openfoodfacts.org','Open Food Facts',CATS[0]],['world.openbeautyfacts.org','Open Beauty Facts','Hygiene'],['world.openproductsfacts.org','Open Products Facts','Other']];
+ for(const [host,src,cat] of H){
+  let r,j;
+  try{r=await fetch('https://'+host+'/api/v2/product/'+code+'.json?fields=product_name,brands,quantity,product_quantity,nutriments')}catch(e){return 'offline'}
+  try{j=await r.json()}catch(e){continue}
+  if(j.status!==1||!j.product)continue;
   const p=j.product,k=(p.nutriments||{})['energy-kcal_100g'],g=parseFloat(p.product_quantity);
-  const nm=[p.brands&&p.brands.split(',')[0],p.product_name,p.quantity].filter(Boolean).join(' ');
-  return {name:nm,cat:CATS[0],v:(k&&g)?Math.round(k*g/100):'',src:'Open Food Facts'};
- }catch(e){return 'offline'}
+  const nm=[p.brands&&p.brands.split(',')[0],p.product_name].filter(Boolean).join(' ');
+  return {name:nm,size:p.quantity||'',cat,v:(cat===CATS[0]&&k&&g)?Math.round(k*g/100):'',src};
+ }
+ return null;
 }
 async function gotCode(code){
  code=String(code).replace(/\D/g,'');if(!code)return;
@@ -371,12 +385,13 @@ $('#manualGo').onclick=()=>{const c=$('#manual').value;$('#manual').value='';got
 function plan(){
  const s=S.set,p=+s.people||1,dy=+s.days||1,need=p*s.kcal*dy;
  ['people','days','kcal','water','grey'].forEach(k=>$('#s-'+k).value=s[k]);
- let ready=0,cook=0,fr=0,miss=0,water=0,grey=0,fuel=0;
- S.items.forEach(i=>{const q=+i.qty||0,v=+i.v||0;
+ let ready=0,cook=0,fr=0,miss=0,water=0,grey=0,fuel=0,wl=[],gl=[];
+ S.items.forEach(i=>{const q=+i.qty||0,v=+i.v||(isW(i.cat)?litres(i.size):0);
   if(food(i)){if(!v&&q)miss++;const k=v*q;if(fresh(i))fr+=k;else if(i.cat==='Food: no cooking')ready+=k;else cook+=k}
-  else if(i.cat==='Water')water+=v*q;else if(i.cat==='Grey water')grey+=v*q;else if(i.cat==='Stove fuel')fuel+=q});
+  else if(i.cat==='Water'){water+=v*q;wl.push([i.name,q,v])}else if(i.cat==='Grey water'){grey+=v*q;gl.push([i.name,q,v])}else if(i.cat==='Stove fuel')fuel+=q});
  const shelf=ready+cook,days=shelf/(p*s.kcal),wn=p*s.water*dy,wd=water/(p*s.water),gn=p*s.grey*dy,gd=s.grey?grey/(p*s.grey):0;
  const pct=x=>Math.min(100,Math.round(x*100));
+ const bd=L=>L.length?`<details><summary class="mu">What is counted</summary>${L.map(([n,q,v])=>`<div class="mu">${esc(n)}: ${q} × ${v?v+' L':'<span class="warn">no litres entered</span>'}${v?' = '+(q*v).toFixed(1)+' L':''}</div>`).join('')}</details>`:'';
  $('#plan').innerHTML=`
  <div class="card"><div class="mu">Shelf-stable food lasts</div><div class="big">${days.toFixed(1)} <span style="font-size:18px">of ${dy} days</span></div>
   <div class="bar"><i style="width:${pct(days/dy)}%"></i></div>
@@ -385,9 +400,9 @@ function plan(){
   ${miss?`<div class="warn">${miss} food item${miss>1?'s have':' has'} no kcal entered, so aren't counted.</div>`:''}
   ${cook>0&&fuel===0?'<div class="warn">You have food that needs cooking but no stove fuel logged.</div>':''}</div>
  <div class="card"><div class="mu">Drinking and cooking water</div><div class="big">${water.toFixed(0)} L <span style="font-size:18px">of ${wn.toFixed(0)} L</span></div>
-  <div class="bar"><i style="width:${pct(wd/dy)}%"></i></div><div class="mu">Covers ${wd.toFixed(1)} days. Count only water that is safe to drink.</div></div>
+  <div class="bar"><i style="width:${pct(wd/dy)}%"></i></div><div class="mu">Covers ${wd.toFixed(1)} days. Count only water that is safe to drink.</div>${bd(wl)}</div>
  <div class="card"><div class="mu">Grey water (washing, flushing, not for drinking)</div><div class="big">${grey.toFixed(0)} L <span style="font-size:18px">of ${gn.toFixed(0)} L</span></div>
-  <div class="bar"><i style="width:${pct(gn?grey/gn:0)}%"></i></div><div class="mu">Covers ${gd.toFixed(1)} days. Log baths, buckets and water butts under the Grey water type.</div></div>
+  <div class="bar"><i style="width:${pct(gn?grey/gn:0)}%"></i></div><div class="mu">Covers ${gd.toFixed(1)} days. Log baths, buckets and water butts under the Grey water type.</div>${bd(gl)}</div>
  <div class="card"><div class="mu">Stove fuel items logged</div><div class="big">${fuel}</div></div>`;
  const rank={Fridge:0,Freezer:1,'Room temp':2};
  const eat=S.items.filter(i=>food(i)&&+i.qty>0&&(fresh(i)||(i.exp&&dleft(i)<=60))).sort((a,b)=>(rank[a.loc]-rank[b.loc])||((a.exp||'9')<(b.exp||'9')?-1:1));
@@ -402,6 +417,6 @@ $('#exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObje
 $('#imp').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());if(!j.items)throw 0;if(confirm('Replace everything on this phone with the backup?')){P=j.photos||{};N=j.nimgs||{};delete j.photos;delete j.nimgs;S=j;S.notes=S.notes||[];S.places=S.places||DEFP.slice();S.units=S.units||DEFU.slice();S.set=S.set||{};S.set.grey=S.set.grey||10;save();await Promise.all(Object.entries(P).map(([k,v])=>pset(k,v)).concat(Object.entries(N).map(([k,v])=>pset(k,v,'n'))));placesUI();unitsUI();render();nrender();plan()}}catch(x){alert('That file isn\'t a Stockpile backup.')}};
 $('#prt').onclick=()=>{$('#t-stock').hidden=false;window.print()};
 
-placesUI();unitsUI();render();nrender();pall('n').then(m=>{N=m;nrender()});pall().then(m=>{P=m;render()});
+placesUI();unitsUI();render();nrender();addEventListener('scroll',()=>{$('#top').hidden=window.scrollY<300},{passive:true});$('#top').onclick=()=>window.scrollTo({top:0,behavior:'smooth'});pall('n').then(m=>{N=m;nrender()});pall().then(m=>{P=m;render()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
